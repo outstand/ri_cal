@@ -27,14 +27,22 @@ class RiCal::Component::TZInfoTimezone < RiCal::Component::Timezone
     end
     
     def period_local_end(period)
-      (period.local_end || DateTime.parse("99990101T000000")).strftime("%Y%m%dT%H%M%S")
+      (local_end(period) || DateTime.parse("99990101T000000")).strftime("%Y%m%dT%H%M%S")
+    end
+
+    private def local_end(period)
+      period.end_transition ? period.end_transition.local_end_at.to_datetime : nil
     end
     
     # This assumes a 1 hour shift which is why we use the previous period local end when
     # possible
     def period_local_start(period)
       shift = daylight? ? Rational(-1, 24) : Rational(1, 24)
-      ((period.local_start || DateTime.parse("16010101T000000")) + shift).strftime("%Y%m%dT%H%M%S")
+      ((local_start(period) || DateTime.parse("16010101T000000")) + shift).strftime("%Y%m%dT%H%M%S")
+    end
+
+    private def local_start(period)
+      period.start_transition ? period.start_transition.local_start_at.to_datetime : nil
     end
 
     def add_period(this_period)
@@ -140,14 +148,22 @@ class RiCal::Component::TZInfoTimezone < RiCal::Component::Timezone
     periods = Periods.new
     period = initial_period = tzinfo_timezone.period_for_utc(utc_start)
      #start with the period before the one containing utc_start
-    prev_period = period.utc_start && tzinfo_timezone.period_for_utc(period.utc_start - 1)
+    prev_period = utc_start(period) && tzinfo_timezone.period_for_utc(utc_start(period) - 1)
     period = prev_period if prev_period
-    while period && period.utc_start && period.utc_start < utc_end
+    while period && utc_start(period) && utc_start(period) < utc_end
       periods.add_period(period)
-      period = period.utc_end && tzinfo_timezone.period_for_utc(period.utc_end + 1)
+      period = utc_end(period) && tzinfo_timezone.period_for_utc(utc_end(period) + 1)
     end
     periods.add_period(initial_period, :force) if periods.empty?
     periods.export_to(export_stream)
     export_stream.puts "END:VTIMEZONE\n"
+  end
+
+  private def utc_start(period)
+    period.start_transition ? period.start_transition.at.to_datetime : nil
+  end
+
+  private def utc_end(period)
+    period.end_transition ? period.end_transition.at.to_datetime : nil
   end
 end
